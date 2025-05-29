@@ -11,10 +11,13 @@ function App() {
       <AuthProvider>
         <Suspense fallback={<p>Loading...</p>}>
           <>
+            {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
             <Routes>
               <Route path="/" element={<Home />} />
+              {import.meta.env.VITE_TEMPO === "true" && (
+                <Route path="/tempobook/*" />
+              )}
             </Routes>
-            {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
           </>
         </Suspense>
       </AuthProvider>
