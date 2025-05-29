@@ -1,0 +1,5 @@
+#!/bin/bash
+ENV_CONFIG="window.__env = {
+  VITE_SUPABASE_URL: \"$VITE_SUPABASE_URL\",
+  VITE_SUPABASE_ANON_KEY: \"$VITE_SUPABASE_ANON_KEY\"
+};" > public/env-config.js

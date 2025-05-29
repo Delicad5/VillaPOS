@@ -2,11 +2,26 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../types/supabase";
 
 // Get environment variables with fallbacks for development
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+let supabaseUrl =
+  import.meta.env.VITE_SUPABASE_URL || "https://your-project-id.supabase.co";
+let supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "your-anon-key";
+
+// Use environment variables from window.__env if available (for production builds)
+if (typeof window !== "undefined" && window.__env) {
+  if (window.__env.VITE_SUPABASE_URL) {
+    supabaseUrl = window.__env.VITE_SUPABASE_URL;
+  }
+  if (window.__env.VITE_SUPABASE_ANON_KEY) {
+    supabaseAnonKey = window.__env.VITE_SUPABASE_ANON_KEY;
+  }
+}
 
 // Check if environment variables are available
-if (!supabaseUrl || !supabaseAnonKey) {
+if (
+  !supabaseUrl ||
+  !supabaseAnonKey ||
+  supabaseUrl === "https://your-project-id.supabase.co"
+) {
   console.error(
     "Missing Supabase environment variables. Please ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set.",
   );

@@ -9,7 +9,12 @@ export default defineConfig({
   optimizeDeps: {
     entries: ["src/main.tsx", "src/tempobook/**/*"],
   },
+  define: {
+    // Make process.env available in the client
+    "process.env": process.env,
+  },
   plugins: [react(), tempo()],
+  envPrefix: ["VITE_", "SUPABASE_"],
   resolve: {
     preserveSymlinks: true,
     alias: {
