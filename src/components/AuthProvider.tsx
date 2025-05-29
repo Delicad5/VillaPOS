@@ -17,13 +17,13 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
 });
 
-export const useAuth = () => useContext(AuthContext);
+// Moving useAuth hook after the component definition to fix Fast Refresh
 
 interface AuthProviderProps {
   children: React.ReactNode;
 }
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
@@ -108,5 +108,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
+// Export the hook after the component definition
+export const useAuth = () => useContext(AuthContext);
 
 export default AuthProvider;
