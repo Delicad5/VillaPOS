@@ -123,8 +123,8 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        // Get tenant ID from localStorage (set during login)
-        const tenantId = localStorage.getItem("tenantId");
+        // Get tenant ID from AuthProvider
+        const tenantId = "1"; // Using default tenant ID
         if (!tenantId) return;
 
         const { data, error } = await supabase
@@ -133,7 +133,10 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
           .eq("tenant_id", tenantId)
           .single();
 
-        if (error) throw error;
+        if (error && error.code !== "PGRST116") {
+          console.error("Error fetching settings:", error);
+          return;
+        }
 
         if (data) {
           setSettings({
@@ -150,16 +153,6 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
         }
       } catch (error) {
         console.error("Error fetching settings from Supabase", error);
-        // Fallback to localStorage
-        const savedSettings = localStorage.getItem("villaSettings");
-        if (savedSettings) {
-          try {
-            const parsedSettings = JSON.parse(savedSettings);
-            setSettings(parsedSettings);
-          } catch (error) {
-            console.error("Error parsing settings from localStorage", error);
-          }
-        }
       }
     };
 

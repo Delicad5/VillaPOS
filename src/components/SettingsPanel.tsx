@@ -57,8 +57,30 @@ const SettingsPanel: React.FC = () => {
           .eq("tenant_id", tenantId)
           .single();
 
-        if (error) {
-          throw error;
+        if (error && error.code !== "PGRST116") {
+          console.error("Error fetching settings:", error);
+
+          // Create default settings if not found
+          if (error.code === "PGRST116") {
+            const defaultSettings = {
+              tenant_id: tenantId,
+              theme: "light",
+              business_name: "Villa Paradise Resort",
+              bank_name: "Bank Central Asia",
+              account_number: "1234567890",
+              account_holder: "PT Villa Paradise Indonesia",
+            };
+
+            const { error: insertError } = await supabase
+              .from("settings")
+              .insert(defaultSettings);
+
+            if (insertError) {
+              console.error("Error creating default settings:", insertError);
+            } else {
+              console.log("Default settings created successfully");
+            }
+          }
         }
 
         if (data) {
@@ -80,17 +102,18 @@ const SettingsPanel: React.FC = () => {
         }
       } catch (error) {
         console.error("Error fetching settings from Supabase", error);
-        // Fallback to localStorage if Supabase fails
-        const savedSettings = localStorage.getItem("villaSettings");
-        if (savedSettings) {
-          try {
-            const parsedSettings = JSON.parse(savedSettings);
-            setSettings(parsedSettings);
-            document.body.className = parsedSettings.theme;
-          } catch (error) {
-            console.error("Error parsing settings from localStorage", error);
-          }
-        }
+        // Use default settings
+        setSettings({
+          theme: "light",
+          businessInfo: {
+            name: "Villa Paradise Resort",
+          },
+          paymentInfo: {
+            bankName: "Bank Central Asia",
+            accountNumber: "1234567890",
+            accountHolder: "PT Villa Paradise Indonesia",
+          },
+        });
       } finally {
         setIsLoading(false);
       }
@@ -158,9 +181,6 @@ const SettingsPanel: React.FC = () => {
 
       if (error) throw error;
 
-      // Also save to localStorage as backup
-      localStorage.setItem("villaSettings", JSON.stringify(settings));
-
       // Apply theme immediately
       document.body.className = settings.theme;
 
@@ -172,12 +192,9 @@ const SettingsPanel: React.FC = () => {
       console.error("Error saving settings to Supabase", error);
       toast({
         title: t("settings.saveError"),
-        description:
-          "Failed to save settings to database. Changes saved locally only.",
+        description: "Failed to save settings to database.",
         variant: "destructive",
       });
-      // Fallback to localStorage
-      localStorage.setItem("villaSettings", JSON.stringify(settings));
     }
   };
 

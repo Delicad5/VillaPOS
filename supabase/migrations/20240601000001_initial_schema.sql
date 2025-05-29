@@ -6,16 +6,6 @@ CREATE TABLE IF NOT EXISTS tenants (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create users table with tenant relationship
-CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tenant_id UUID REFERENCES tenants(id),
-  username TEXT NOT NULL UNIQUE,
-  password TEXT NOT NULL, -- In production, use auth.users instead
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
 -- Create settings table for business and payment info
 CREATE TABLE IF NOT EXISTS settings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -105,9 +95,18 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Insert default tenant
+INSERT INTO tenants (id, name) VALUES 
+('1', 'Villa Paradise')
+ON CONFLICT (id) DO NOTHING;
+
+-- Insert default settings
+INSERT INTO settings (tenant_id, theme, business_name, bank_name, account_number, account_holder) VALUES 
+('1', 'light', 'Villa Paradise Resort', 'Bank Central Asia', '1234567890', 'PT Villa Paradise Indonesia')
+ON CONFLICT (tenant_id) DO NOTHING;
+
 -- Enable Row Level Security
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
@@ -116,96 +115,34 @@ ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invoice_items ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for tenant access
-CREATE POLICY "Tenants can view their own data" ON tenants
-  FOR SELECT USING (auth.uid() IN (
-    SELECT user_id FROM users WHERE tenant_id = id
-  ));
+CREATE POLICY "Tenants can access their own data" ON tenants
+  FOR ALL USING (id = '1');
 
-CREATE POLICY "Users can view their tenant data" ON users
-  FOR SELECT USING (tenant_id IN (
-    SELECT tenant_id FROM users WHERE user_id = auth.uid()
-  ));
+CREATE POLICY "Settings can be accessed by tenant" ON settings
+  FOR ALL USING (tenant_id = '1');
 
-CREATE POLICY "Users can view their tenant settings" ON settings
-  FOR SELECT USING (tenant_id IN (
-    SELECT tenant_id FROM users WHERE user_id = auth.uid()
-  ));
+CREATE POLICY "Rooms can be accessed by tenant" ON rooms
+  FOR ALL USING (tenant_id = '1');
 
-CREATE POLICY "Users can update their tenant settings" ON settings
-  FOR UPDATE USING (tenant_id IN (
-    SELECT tenant_id FROM users WHERE user_id = auth.uid()
-  ));
+CREATE POLICY "Customers can be accessed by tenant" ON customers
+  FOR ALL USING (tenant_id = '1');
 
-CREATE POLICY "Users can view their tenant rooms" ON rooms
-  FOR SELECT USING (tenant_id IN (
-    SELECT tenant_id FROM users WHERE user_id = auth.uid()
-  ));
+CREATE POLICY "Bookings can be accessed by tenant" ON bookings
+  FOR ALL USING (tenant_id = '1');
 
-CREATE POLICY "Users can manage their tenant rooms" ON rooms
-  FOR ALL USING (tenant_id IN (
-    SELECT tenant_id FROM users WHERE user_id = auth.uid()
-  ));
+CREATE POLICY "Invoices can be accessed by tenant" ON invoices
+  FOR ALL USING (tenant_id = '1');
 
-CREATE POLICY "Users can view their tenant customers" ON customers
-  FOR SELECT USING (tenant_id IN (
-    SELECT tenant_id FROM users WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can manage their tenant customers" ON customers
-  FOR ALL USING (tenant_id IN (
-    SELECT tenant_id FROM users WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can view their tenant bookings" ON bookings
-  FOR SELECT USING (tenant_id IN (
-    SELECT tenant_id FROM users WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can manage their tenant bookings" ON bookings
-  FOR ALL USING (tenant_id IN (
-    SELECT tenant_id FROM users WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can view their tenant invoices" ON invoices
-  FOR SELECT USING (tenant_id IN (
-    SELECT tenant_id FROM users WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can manage their tenant invoices" ON invoices
-  FOR ALL USING (tenant_id IN (
-    SELECT tenant_id FROM users WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can view their tenant invoice items" ON invoice_items
-  FOR SELECT USING (invoice_id IN (
-    SELECT id FROM invoices WHERE tenant_id IN (
-      SELECT tenant_id FROM users WHERE user_id = auth.uid()
-    )
-  ));
-
-CREATE POLICY "Users can manage their tenant invoice items" ON invoice_items
+CREATE POLICY "Invoice items can be accessed by tenant" ON invoice_items
   FOR ALL USING (invoice_id IN (
-    SELECT id FROM invoices WHERE tenant_id IN (
-      SELECT tenant_id FROM users WHERE user_id = auth.uid()
-    )
+    SELECT id FROM invoices WHERE tenant_id = '1'
   ));
 
 -- Enable realtime subscriptions
 alter publication supabase_realtime add table tenants;
-alter publication supabase_realtime add table users;
 alter publication supabase_realtime add table settings;
 alter publication supabase_realtime add table rooms;
 alter publication supabase_realtime add table customers;
 alter publication supabase_realtime add table bookings;
 alter publication supabase_realtime add table invoices;
 alter publication supabase_realtime add table invoice_items;
-
--- Insert demo data
-INSERT INTO tenants (id, name) VALUES 
-('d9a1fc2e-d6a6-4f30-9b4c-6f832c4d3510', 'Villa Paradise');
-
-INSERT INTO users (tenant_id, username, password) VALUES 
-('d9a1fc2e-d6a6-4f30-9b4c-6f832c4d3510', 'admin', 'password');
-
-INSERT INTO settings (tenant_id, theme, business_name, bank_name, account_number, account_holder) VALUES 
-('d9a1fc2e-d6a6-4f30-9b4c-6f832c4d3510', 'light', 'Villa Paradise Resort', 'Bank Central Asia', '1234567890', 'PT Villa Paradise Indonesia');

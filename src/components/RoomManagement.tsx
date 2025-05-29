@@ -142,7 +142,10 @@ const RoomManagement: React.FC = () => {
           .select("*")
           .eq("tenant_id", tenantId);
 
-        if (error) throw error;
+        if (error) {
+          console.error("Error fetching rooms:", error);
+          return;
+        }
 
         if (data && data.length > 0) {
           const formattedRooms = data.map((room) => ({
@@ -156,14 +159,37 @@ const RoomManagement: React.FC = () => {
             facilities: room.facilities
               ? Array.isArray(room.facilities)
                 ? room.facilities
-                : JSON.parse(room.facilities)
+                : JSON.parse(String(room.facilities))
               : [],
-            isActive: room.is_active,
+            isActive: room.is_active ?? true,
           }));
           setRooms(formattedRooms);
+        } else {
+          // If no rooms found in database, insert the default rooms
+          const defaultRoomsToInsert = rooms.map((room) => ({
+            tenant_id: tenantId,
+            number: room.number,
+            type: room.type,
+            price_per_night: room.pricePerNight,
+            max_guests: room.maxGuests,
+            status: room.status,
+            description: room.description,
+            facilities: room.facilities,
+            is_active: room.isActive,
+          }));
+
+          const { error: insertError } = await supabase
+            .from("rooms")
+            .insert(defaultRoomsToInsert);
+
+          if (insertError) {
+            console.error("Error inserting default rooms:", insertError);
+          } else {
+            console.log("Default rooms inserted successfully");
+          }
         }
       } catch (error) {
-        console.error("Error fetching rooms:", error);
+        console.error("Error in room management:", error);
       } finally {
         setIsLoading(false);
       }

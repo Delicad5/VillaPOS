@@ -69,7 +69,10 @@ const CustomerDatabase: React.FC = () => {
           .select("*")
           .eq("tenant_id", tenantId);
 
-        if (customersError) throw customersError;
+        if (customersError) {
+          console.error("Error fetching customers:", customersError);
+          throw customersError;
+        }
 
         if (customersData && customersData.length > 0) {
           // Fetch bookings for all customers
@@ -80,7 +83,10 @@ const CustomerDatabase: React.FC = () => {
             )
             .eq("tenant_id", tenantId);
 
-          if (bookingsError) throw bookingsError;
+          if (bookingsError) {
+            console.error("Error fetching bookings:", bookingsError);
+            throw bookingsError;
+          }
 
           // Get room details for bookings
           const { data: roomsData, error: roomsError } = await supabase
@@ -88,7 +94,10 @@ const CustomerDatabase: React.FC = () => {
             .select("id, number, type")
             .eq("tenant_id", tenantId);
 
-          if (roomsError) throw roomsError;
+          if (roomsError) {
+            console.error("Error fetching rooms:", roomsError);
+            throw roomsError;
+          }
 
           // Create a map of room id to room details
           const roomsMap = roomsData?.reduce(
@@ -146,21 +155,105 @@ const CustomerDatabase: React.FC = () => {
           setCustomers(formattedCustomers);
           setBookingsMap(bookingsByCustomer);
         } else {
-          // If no customers found, use mock data for now
-          setCustomers([
+          // If no customers found, insert mock data into Supabase
+          const mockCustomers = [
             {
-              id: "1",
+              tenant_id: tenantId,
               name: "John Doe",
               phone: "+62 812 3456 7890",
               email: "john.doe@example.com",
-              totalBookings: 3,
-              lastBookingDate: "2023-06-15",
             },
-            // ... other mock customers
-          ]);
+            {
+              tenant_id: tenantId,
+              name: "Jane Smith",
+              phone: "+62 812 9876 5432",
+              email: "jane.smith@example.com",
+            },
+            {
+              tenant_id: tenantId,
+              name: "Robert Johnson",
+              phone: "+62 811 2345 6789",
+              email: "robert.j@example.com",
+            },
+            {
+              tenant_id: tenantId,
+              name: "Sarah Williams",
+              phone: "+62 813 8765 4321",
+              email: "sarah.w@example.com",
+            },
+            {
+              tenant_id: tenantId,
+              name: "Michael Brown",
+              phone: "+62 812 1122 3344",
+              email: "michael.b@example.com",
+            },
+          ];
+
+          const { data: insertedCustomers, error: insertError } = await supabase
+            .from("customers")
+            .insert(mockCustomers)
+            .select();
+
+          if (insertError) {
+            console.error("Error inserting mock customers:", insertError);
+            // Use mock data as fallback
+            setCustomers([
+              {
+                id: "1",
+                name: "John Doe",
+                phone: "+62 812 3456 7890",
+                email: "john.doe@example.com",
+                totalBookings: 3,
+                lastBookingDate: "2023-06-15",
+              },
+              {
+                id: "2",
+                name: "Jane Smith",
+                phone: "+62 812 9876 5432",
+                email: "jane.smith@example.com",
+                totalBookings: 1,
+                lastBookingDate: "2023-05-20",
+              },
+              {
+                id: "3",
+                name: "Robert Johnson",
+                phone: "+62 811 2345 6789",
+                email: "robert.j@example.com",
+                totalBookings: 5,
+                lastBookingDate: "2023-06-10",
+              },
+              {
+                id: "4",
+                name: "Sarah Williams",
+                phone: "+62 813 8765 4321",
+                email: "sarah.w@example.com",
+                totalBookings: 2,
+                lastBookingDate: "2023-04-05",
+              },
+              {
+                id: "5",
+                name: "Michael Brown",
+                phone: "+62 812 1122 3344",
+                email: "michael.b@example.com",
+                totalBookings: 4,
+                lastBookingDate: "2023-06-18",
+              },
+            ]);
+          } else if (insertedCustomers) {
+            // Format the inserted customers
+            const formattedCustomers = insertedCustomers.map((customer) => ({
+              id: customer.id,
+              name: customer.name,
+              phone: customer.phone || "",
+              email: customer.email || "",
+              totalBookings: 0,
+              lastBookingDate: "",
+            }));
+            setCustomers(formattedCustomers);
+          }
         }
       } catch (error) {
-        console.error("Error fetching customers:", error);
+        console.error("Error in customer database:", error);
         // Use mock data as fallback
         setCustomers([
           {
