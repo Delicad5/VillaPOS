@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "./AuthProvider";
 import {
   Dialog,
   DialogContent,
@@ -64,6 +66,8 @@ const defaultFacilities: Facility[] = [
 
 const RoomManagement: React.FC = () => {
   const { t } = useLanguage();
+  const { tenantId } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
   const [rooms, setRooms] = useState<Room[]>([
     {
       id: "1",
@@ -125,6 +129,48 @@ const RoomManagement: React.FC = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+  // Fetch rooms from Supabase
+  useEffect(() => {
+    const fetchRooms = async () => {
+      if (!tenantId) return;
+
+      try {
+        setIsLoading(true);
+        const { data, error } = await supabase
+          .from("rooms")
+          .select("*")
+          .eq("tenant_id", tenantId);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          const formattedRooms = data.map((room) => ({
+            id: room.id,
+            number: room.number,
+            type: room.type,
+            pricePerNight: room.price_per_night,
+            maxGuests: room.max_guests,
+            status: room.status as RoomStatus,
+            description: room.description || "",
+            facilities: room.facilities
+              ? Array.isArray(room.facilities)
+                ? room.facilities
+                : JSON.parse(room.facilities)
+              : [],
+            isActive: room.is_active,
+          }));
+          setRooms(formattedRooms);
+        }
+      } catch (error) {
+        console.error("Error fetching rooms:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchRooms();
+  }, [tenantId]);
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
   const [newRoom, setNewRoom] = useState<Partial<Room>>({
     number: "",
@@ -138,71 +184,173 @@ const RoomManagement: React.FC = () => {
   });
   const [otherFacility, setOtherFacility] = useState("");
 
-  const handleAddRoom = () => {
-    const roomToAdd: Room = {
-      id: Date.now().toString(),
-      number: newRoom.number || "",
-      type: newRoom.type || "standard",
-      pricePerNight: newRoom.pricePerNight || 500000,
-      maxGuests: newRoom.maxGuests || 2,
-      status: "available",
-      description: newRoom.description || "",
-      facilities: newRoom.facilities || [],
-      isActive: true,
-    };
+  const handleAddRoom = async () => {
+    if (!tenantId) return;
 
-    setRooms([...rooms, roomToAdd]);
-    setIsAddDialogOpen(false);
-    resetNewRoom();
+    try {
+      const roomToAdd = {
+        tenant_id: tenantId,
+        number: newRoom.number || "",
+        type: newRoom.type || "standard",
+        price_per_night: newRoom.pricePerNight || 500000,
+        max_guests: newRoom.maxGuests || 2,
+        status: "available",
+        description: newRoom.description || "",
+        facilities: newRoom.facilities || [],
+        is_active: true,
+      };
+
+      const { data, error } = await supabase
+        .from("rooms")
+        .insert(roomToAdd)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const newRoom: Room = {
+          id: data.id,
+          number: data.number,
+          type: data.type,
+          pricePerNight: data.price_per_night,
+          maxGuests: data.max_guests,
+          status: data.status as RoomStatus,
+          description: data.description || "",
+          facilities: data.facilities || [],
+          isActive: data.is_active,
+        };
+
+        setRooms([...rooms, newRoom]);
+      }
+
+      setIsAddDialogOpen(false);
+      resetNewRoom();
+    } catch (error) {
+      console.error("Error adding room:", error);
+    }
   };
 
-  const handleEditRoom = () => {
-    if (!currentRoom) return;
+  const handleEditRoom = async () => {
+    if (!currentRoom || !tenantId) return;
 
-    const updatedRooms = rooms.map((room) =>
-      room.id === currentRoom.id ? { ...currentRoom } : room,
-    );
+    try {
+      const { error } = await supabase
+        .from("rooms")
+        .update({
+          number: currentRoom.number,
+          type: currentRoom.type,
+          price_per_night: currentRoom.pricePerNight,
+          max_guests: currentRoom.maxGuests,
+          status: currentRoom.status,
+          description: currentRoom.description,
+          facilities: currentRoom.facilities,
+          is_active: currentRoom.isActive,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", currentRoom.id)
+        .eq("tenant_id", tenantId);
 
-    setRooms(updatedRooms);
-    setIsEditDialogOpen(false);
-    setCurrentRoom(null);
-  };
+      if (error) throw error;
 
-  const handleDeleteRoom = () => {
-    if (!currentRoom) return;
-
-    // Check if room has booking history (in a real app)
-    const hasBookingHistory = currentRoom.id === "2"; // Mock check
-
-    if (hasBookingHistory) {
-      // Deactivate instead of delete
       const updatedRooms = rooms.map((room) =>
-        room.id === currentRoom.id
-          ? { ...room, isActive: false, status: "inactive" as RoomStatus }
-          : room,
+        room.id === currentRoom.id ? { ...currentRoom } : room,
+      );
+
+      setRooms(updatedRooms);
+      setIsEditDialogOpen(false);
+      setCurrentRoom(null);
+    } catch (error) {
+      console.error("Error updating room:", error);
+    }
+  };
+
+  const handleDeleteRoom = async () => {
+    if (!currentRoom || !tenantId) return;
+
+    try {
+      // Check if room has booking history
+      const { data: bookings, error: bookingError } = await supabase
+        .from("bookings")
+        .select("id")
+        .eq("room_id", currentRoom.id)
+        .limit(1);
+
+      if (bookingError) throw bookingError;
+
+      const hasBookingHistory = bookings && bookings.length > 0;
+
+      if (hasBookingHistory) {
+        // Deactivate instead of delete
+        const { error } = await supabase
+          .from("rooms")
+          .update({
+            is_active: false,
+            status: "inactive",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", currentRoom.id)
+          .eq("tenant_id", tenantId);
+
+        if (error) throw error;
+
+        const updatedRooms = rooms.map((room) =>
+          room.id === currentRoom.id
+            ? { ...room, isActive: false, status: "inactive" as RoomStatus }
+            : room,
+        );
+        setRooms(updatedRooms);
+      } else {
+        // Delete if no booking history
+        const { error } = await supabase
+          .from("rooms")
+          .delete()
+          .eq("id", currentRoom.id)
+          .eq("tenant_id", tenantId);
+
+        if (error) throw error;
+
+        const updatedRooms = rooms.filter((room) => room.id !== currentRoom.id);
+        setRooms(updatedRooms);
+      }
+
+      setIsDeleteDialogOpen(false);
+      setCurrentRoom(null);
+    } catch (error) {
+      console.error("Error deleting room:", error);
+    }
+  };
+
+  const handleToggleRoomStatus = async (room: Room) => {
+    if (!tenantId) return;
+
+    try {
+      const newStatus = !room.isActive;
+      const { error } = await supabase
+        .from("rooms")
+        .update({
+          is_active: newStatus,
+          status: newStatus ? "available" : "inactive",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", room.id)
+        .eq("tenant_id", tenantId);
+
+      if (error) throw error;
+
+      const updatedRooms = rooms.map((r) =>
+        r.id === room.id
+          ? {
+              ...r,
+              isActive: !r.isActive,
+              status: !r.isActive ? "available" : "inactive",
+            }
+          : r,
       );
       setRooms(updatedRooms);
-    } else {
-      // Delete if no booking history
-      const updatedRooms = rooms.filter((room) => room.id !== currentRoom.id);
-      setRooms(updatedRooms);
+    } catch (error) {
+      console.error("Error toggling room status:", error);
     }
-
-    setIsDeleteDialogOpen(false);
-    setCurrentRoom(null);
-  };
-
-  const handleToggleRoomStatus = (room: Room) => {
-    const updatedRooms = rooms.map((r) =>
-      r.id === room.id
-        ? {
-            ...r,
-            isActive: !r.isActive,
-            status: !r.isActive ? "available" : "inactive",
-          }
-        : r,
-    );
-    setRooms(updatedRooms);
   };
 
   const openEditDialog = (room: Room) => {
@@ -285,13 +433,19 @@ const RoomManagement: React.FC = () => {
         </Button>
       </div>
 
-      <RoomGrid
-        rooms={activeRooms}
-        onRoomSelect={() => {}}
-        onEditRoom={openEditDialog}
-        onDeleteRoom={openDeleteDialog}
-        onToggleStatus={handleToggleRoomStatus}
-      />
+      {isLoading ? (
+        <div className="flex justify-center items-center h-64">
+          Loading rooms...
+        </div>
+      ) : (
+        <RoomGrid
+          rooms={activeRooms}
+          onRoomSelect={() => {}}
+          onEditRoom={openEditDialog}
+          onDeleteRoom={openDeleteDialog}
+          onToggleStatus={handleToggleRoomStatus}
+        />
+      )}
 
       {/* Add Room Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { supabase } from "../lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -107,7 +108,7 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
 }) => {
   const [previewMode, setPreviewMode] = useState(false);
 
-  // Load settings from localStorage
+  // Load settings from Supabase
   const [settings, setSettings] = useState({
     businessInfo: {
       name: "Villa Paradise",
@@ -120,15 +121,49 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
   });
 
   useEffect(() => {
-    const savedSettings = localStorage.getItem("villaSettings");
-    if (savedSettings) {
+    const fetchSettings = async () => {
       try {
-        const parsedSettings = JSON.parse(savedSettings);
-        setSettings(parsedSettings);
+        // Get tenant ID from localStorage (set during login)
+        const tenantId = localStorage.getItem("tenantId");
+        if (!tenantId) return;
+
+        const { data, error } = await supabase
+          .from("settings")
+          .select("business_name, bank_name, account_number, account_holder")
+          .eq("tenant_id", tenantId)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          setSettings({
+            businessInfo: {
+              name: data.business_name || "Villa Paradise",
+            },
+            paymentInfo: {
+              bankName: data.bank_name || "Bank Central Asia (BCA)",
+              accountNumber: data.account_number || "1234567890",
+              accountHolder:
+                data.account_holder || "PT Villa Paradise Indonesia",
+            },
+          });
+        }
       } catch (error) {
-        console.error("Error parsing settings from localStorage", error);
+        console.error("Error fetching settings from Supabase", error);
+        // Fallback to localStorage
+        const savedSettings = localStorage.getItem("villaSettings");
+        if (savedSettings) {
+          try {
+            const parsedSettings = JSON.parse(savedSettings);
+            setSettings(parsedSettings);
+          } catch (error) {
+            console.error("Error parsing settings from localStorage", error);
+          }
+        }
       }
-    }
+    };
+
+    fetchSettings();
   }, []);
 
   // Use settings for business name and bank details if not provided as props

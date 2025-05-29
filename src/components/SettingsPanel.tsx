@@ -7,6 +7,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/use-toast";
+import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "./AuthProvider";
 
 type Theme = "light" | "dark" | "corporate-blue" | "nature-green";
 
@@ -28,6 +30,8 @@ interface SettingsState {
 
 const SettingsPanel: React.FC = () => {
   const { t } = useLanguage();
+  const { tenantId } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
   const [settings, setSettings] = useState<SettingsState>({
     theme: "light",
     businessInfo: {
@@ -40,23 +44,60 @@ const SettingsPanel: React.FC = () => {
     },
   });
 
-  // Load settings from localStorage on component mount
+  // Load settings from Supabase on component mount
   useEffect(() => {
-    const savedSettings = localStorage.getItem("villaSettings");
-    if (savedSettings) {
-      try {
-        const parsedSettings = JSON.parse(savedSettings);
-        setSettings(parsedSettings);
-      } catch (error) {
-        console.error("Error parsing settings from localStorage", error);
-      }
-    }
-  }, []);
+    const fetchSettings = async () => {
+      if (!tenantId) return;
 
-  // Save settings to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem("villaSettings", JSON.stringify(settings));
-  }, [settings]);
+      try {
+        setIsLoading(true);
+        const { data, error } = await supabase
+          .from("settings")
+          .select("*")
+          .eq("tenant_id", tenantId)
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        if (data) {
+          setSettings({
+            theme: (data.theme as Theme) || "light",
+            businessInfo: {
+              name: data.business_name || "Villa Paradise Resort",
+            },
+            paymentInfo: {
+              bankName: data.bank_name || "Bank Central Asia",
+              accountNumber: data.account_number || "1234567890",
+              accountHolder:
+                data.account_holder || "PT Villa Paradise Indonesia",
+            },
+          });
+
+          // Apply theme to document body
+          document.body.className = data.theme || "light";
+        }
+      } catch (error) {
+        console.error("Error fetching settings from Supabase", error);
+        // Fallback to localStorage if Supabase fails
+        const savedSettings = localStorage.getItem("villaSettings");
+        if (savedSettings) {
+          try {
+            const parsedSettings = JSON.parse(savedSettings);
+            setSettings(parsedSettings);
+            document.body.className = parsedSettings.theme;
+          } catch (error) {
+            console.error("Error parsing settings from localStorage", error);
+          }
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSettings();
+  }, [tenantId]);
 
   const handleThemeChange = (value: Theme) => {
     setSettings((prev) => ({
@@ -90,16 +131,63 @@ const SettingsPanel: React.FC = () => {
     }));
   };
 
-  const handleSaveSettings = () => {
-    // Save to localStorage
-    localStorage.setItem("villaSettings", JSON.stringify(settings));
-    // Apply theme immediately
-    document.body.className = settings.theme;
-    toast({
-      title: t("settings.saveSuccess"),
-      description: t("settings.saveSuccessDescription"),
-    });
+  const handleSaveSettings = async () => {
+    if (!tenantId) {
+      toast({
+        title: t("settings.saveError"),
+        description: "No tenant ID found. Please log in again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Save to Supabase
+      const { error } = await supabase.from("settings").upsert(
+        {
+          tenant_id: tenantId,
+          theme: settings.theme,
+          business_name: settings.businessInfo.name,
+          bank_name: settings.paymentInfo.bankName,
+          account_number: settings.paymentInfo.accountNumber,
+          account_holder: settings.paymentInfo.accountHolder,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "tenant_id" },
+      );
+
+      if (error) throw error;
+
+      // Also save to localStorage as backup
+      localStorage.setItem("villaSettings", JSON.stringify(settings));
+
+      // Apply theme immediately
+      document.body.className = settings.theme;
+
+      toast({
+        title: t("settings.saveSuccess"),
+        description: t("settings.saveSuccessDescription"),
+      });
+    } catch (error) {
+      console.error("Error saving settings to Supabase", error);
+      toast({
+        title: t("settings.saveError"),
+        description:
+          "Failed to save settings to database. Changes saved locally only.",
+        variant: "destructive",
+      });
+      // Fallback to localStorage
+      localStorage.setItem("villaSettings", JSON.stringify(settings));
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        Loading settings...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

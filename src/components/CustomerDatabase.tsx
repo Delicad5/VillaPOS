@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "./AuthProvider";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -41,6 +43,7 @@ interface Booking {
 
 const CustomerDatabase: React.FC = () => {
   const { t } = useLanguage();
+  const { tenantId } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<keyof Customer>("name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -48,53 +51,169 @@ const CustomerDatabase: React.FC = () => {
     null,
   );
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [bookingsMap, setBookingsMap] = useState<Record<string, Booking[]>>({});
 
-  // Mock customer data
-  const customers: Customer[] = [
-    {
-      id: "1",
-      name: "John Doe",
-      phone: "+62 812 3456 7890",
-      email: "john.doe@example.com",
-      totalBookings: 3,
-      lastBookingDate: "2023-06-15",
-    },
-    {
-      id: "2",
-      name: "Jane Smith",
-      phone: "+62 812 9876 5432",
-      email: "jane.smith@example.com",
-      totalBookings: 1,
-      lastBookingDate: "2023-05-20",
-    },
-    {
-      id: "3",
-      name: "Robert Johnson",
-      phone: "+62 811 2345 6789",
-      email: "robert.j@example.com",
-      totalBookings: 5,
-      lastBookingDate: "2023-06-10",
-    },
-    {
-      id: "4",
-      name: "Sarah Williams",
-      phone: "+62 813 8765 4321",
-      email: "sarah.w@example.com",
-      totalBookings: 2,
-      lastBookingDate: "2023-04-05",
-    },
-    {
-      id: "5",
-      name: "Michael Brown",
-      phone: "+62 812 1122 3344",
-      email: "michael.b@example.com",
-      totalBookings: 4,
-      lastBookingDate: "2023-06-18",
-    },
-  ];
+  // Fetch customers from Supabase
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      if (!tenantId) return;
 
-  // Mock booking data for selected customer
-  const customerBookings: Record<string, Booking[]> = {
+      try {
+        setIsLoading(true);
+
+        // Fetch customers
+        const { data: customersData, error: customersError } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("tenant_id", tenantId);
+
+        if (customersError) throw customersError;
+
+        if (customersData && customersData.length > 0) {
+          // Fetch bookings for all customers
+          const { data: bookingsData, error: bookingsError } = await supabase
+            .from("bookings")
+            .select(
+              "id, room_id, customer_id, check_in, check_out, total_amount, status",
+            )
+            .eq("tenant_id", tenantId);
+
+          if (bookingsError) throw bookingsError;
+
+          // Get room details for bookings
+          const { data: roomsData, error: roomsError } = await supabase
+            .from("rooms")
+            .select("id, number, type")
+            .eq("tenant_id", tenantId);
+
+          if (roomsError) throw roomsError;
+
+          // Create a map of room id to room details
+          const roomsMap = roomsData?.reduce(
+            (acc, room) => {
+              acc[room.id] = { number: room.number, type: room.type };
+              return acc;
+            },
+            {} as Record<string, { number: string; type: string }>,
+          );
+
+          // Process bookings by customer
+          const bookingsByCustomer: Record<string, Booking[]> = {};
+          bookingsData?.forEach((booking) => {
+            const room = roomsMap[booking.room_id];
+            if (!room) return;
+
+            const formattedBooking: Booking = {
+              id: booking.id,
+              roomNumber: room.number,
+              roomType: room.type,
+              checkIn: booking.check_in,
+              checkOut: booking.check_out,
+              totalAmount: booking.total_amount,
+              status: booking.status as "completed" | "upcoming" | "cancelled",
+            };
+
+            if (!bookingsByCustomer[booking.customer_id]) {
+              bookingsByCustomer[booking.customer_id] = [];
+            }
+            bookingsByCustomer[booking.customer_id].push(formattedBooking);
+          });
+
+          // Format customers with booking information
+          const formattedCustomers = customersData.map((customer) => {
+            const customerBookings = bookingsByCustomer[customer.id] || [];
+            const lastBooking =
+              customerBookings.length > 0
+                ? customerBookings.sort(
+                    (a, b) =>
+                      new Date(b.checkIn).getTime() -
+                      new Date(a.checkIn).getTime(),
+                  )[0]
+                : null;
+
+            return {
+              id: customer.id,
+              name: customer.name,
+              phone: customer.phone || "",
+              email: customer.email || "",
+              totalBookings: customerBookings.length,
+              lastBookingDate: lastBooking ? lastBooking.checkIn : "",
+            };
+          });
+
+          setCustomers(formattedCustomers);
+          setBookingsMap(bookingsByCustomer);
+        } else {
+          // If no customers found, use mock data for now
+          setCustomers([
+            {
+              id: "1",
+              name: "John Doe",
+              phone: "+62 812 3456 7890",
+              email: "john.doe@example.com",
+              totalBookings: 3,
+              lastBookingDate: "2023-06-15",
+            },
+            // ... other mock customers
+          ]);
+        }
+      } catch (error) {
+        console.error("Error fetching customers:", error);
+        // Use mock data as fallback
+        setCustomers([
+          {
+            id: "1",
+            name: "John Doe",
+            phone: "+62 812 3456 7890",
+            email: "john.doe@example.com",
+            totalBookings: 3,
+            lastBookingDate: "2023-06-15",
+          },
+          {
+            id: "2",
+            name: "Jane Smith",
+            phone: "+62 812 9876 5432",
+            email: "jane.smith@example.com",
+            totalBookings: 1,
+            lastBookingDate: "2023-05-20",
+          },
+          {
+            id: "3",
+            name: "Robert Johnson",
+            phone: "+62 811 2345 6789",
+            email: "robert.j@example.com",
+            totalBookings: 5,
+            lastBookingDate: "2023-06-10",
+          },
+          {
+            id: "4",
+            name: "Sarah Williams",
+            phone: "+62 813 8765 4321",
+            email: "sarah.w@example.com",
+            totalBookings: 2,
+            lastBookingDate: "2023-04-05",
+          },
+          {
+            id: "5",
+            name: "Michael Brown",
+            phone: "+62 812 1122 3344",
+            email: "michael.b@example.com",
+            totalBookings: 4,
+            lastBookingDate: "2023-06-18",
+          },
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCustomers();
+  }, [tenantId]);
+
+  // Mock booking data for selected customer if not loaded from database
+  const mockBookings: Record<string, Booking[]> = {
     "1": [
       {
         id: "b1",
@@ -286,9 +405,65 @@ const CustomerDatabase: React.FC = () => {
     }
   });
 
-  const handleViewDetails = (customer: Customer) => {
+  const handleViewDetails = async (customer: Customer) => {
     setSelectedCustomer(customer);
     setIsDetailsOpen(true);
+
+    // If we don't have bookings for this customer yet, fetch them
+    if (!bookingsMap[customer.id] && tenantId) {
+      try {
+        // Fetch bookings for this customer
+        const { data: bookingsData, error: bookingsError } = await supabase
+          .from("bookings")
+          .select("id, room_id, check_in, check_out, total_amount, status")
+          .eq("tenant_id", tenantId)
+          .eq("customer_id", customer.id);
+
+        if (bookingsError) throw bookingsError;
+
+        if (bookingsData && bookingsData.length > 0) {
+          // Get room details for these bookings
+          const roomIds = bookingsData.map((b) => b.room_id);
+          const { data: roomsData, error: roomsError } = await supabase
+            .from("rooms")
+            .select("id, number, type")
+            .in("id", roomIds);
+
+          if (roomsError) throw roomsError;
+
+          // Create a map of room id to room details
+          const roomsMap = roomsData?.reduce(
+            (acc, room) => {
+              acc[room.id] = { number: room.number, type: room.type };
+              return acc;
+            },
+            {} as Record<string, { number: string; type: string }>,
+          );
+
+          // Format bookings
+          const formattedBookings = bookingsData.map((booking) => {
+            const room = roomsMap[booking.room_id];
+            return {
+              id: booking.id,
+              roomNumber: room?.number || "Unknown",
+              roomType: room?.type || "Unknown",
+              checkIn: booking.check_in,
+              checkOut: booking.check_out,
+              totalAmount: booking.total_amount,
+              status: booking.status as "completed" | "upcoming" | "cancelled",
+            };
+          });
+
+          // Update bookings map
+          setBookingsMap((prev) => ({
+            ...prev,
+            [customer.id]: formattedBookings,
+          }));
+        }
+      } catch (error) {
+        console.error("Error fetching customer bookings:", error);
+      }
+    }
   };
 
   const getSortIcon = (field: keyof Customer) => {
@@ -311,6 +486,12 @@ const CustomerDatabase: React.FC = () => {
           {t("general.export")}
         </Button>
       </div>
+
+      {isLoading && (
+        <div className="flex justify-center items-center h-64">
+          Loading customers...
+        </div>
+      )}
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -456,7 +637,11 @@ const CustomerDatabase: React.FC = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {customerBookings[selectedCustomer.id]?.map((booking) => (
+                      {(
+                        bookingsMap[selectedCustomer.id] ||
+                        mockBookings[selectedCustomer.id] ||
+                        []
+                      ).map((booking) => (
                         <TableRow key={booking.id}>
                           <TableCell>{booking.roomNumber}</TableCell>
                           <TableCell>{booking.roomType}</TableCell>
