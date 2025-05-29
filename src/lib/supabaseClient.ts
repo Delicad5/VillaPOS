@@ -2,9 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../types/supabase";
 
 // Get environment variables with fallbacks for development
-let supabaseUrl =
-  import.meta.env.VITE_SUPABASE_URL || "https://your-project-id.supabase.co";
-let supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "your-anon-key";
+let supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+let supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
 // Use environment variables from window.__env if available (for production builds)
 if (typeof window !== "undefined" && window.__env) {
@@ -17,11 +16,7 @@ if (typeof window !== "undefined" && window.__env) {
 }
 
 // Check if environment variables are available
-if (
-  !supabaseUrl ||
-  !supabaseAnonKey ||
-  supabaseUrl === "https://your-project-id.supabase.co"
-) {
+if (!supabaseUrl || !supabaseAnonKey) {
   console.error(
     "Missing Supabase environment variables. Please ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set.",
   );
@@ -31,8 +26,16 @@ if (
 let supabaseClient: ReturnType<typeof createClient<Database>> | null = null;
 
 try {
+  // Validate URL before creating client
   if (supabaseUrl && supabaseAnonKey) {
-    supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey);
+    // Check if URL is valid
+    try {
+      new URL(supabaseUrl);
+      supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey);
+    } catch (urlError) {
+      console.error("Invalid Supabase URL format:", supabaseUrl);
+      console.error("URL Error:", urlError);
+    }
   }
 } catch (error) {
   console.error("Failed to initialize Supabase client:", error);
