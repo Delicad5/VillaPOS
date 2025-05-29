@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "./AuthProvider";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -27,7 +28,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Printer, Download, Mail, Eye } from "lucide-react";
+import { Printer, Download, Mail, Eye, Plus, Trash2 } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { format } from "date-fns";
+import { usePDF } from "react-to-pdf";
 
 interface InvoiceItem {
   description: string;
@@ -37,6 +41,7 @@ interface InvoiceItem {
 }
 
 interface InvoiceProps {
+  bookingId?: string;
   invoiceNumber?: string;
   businessName?: string;
   businessAddress?: string;
@@ -63,50 +68,79 @@ interface InvoiceProps {
 }
 
 const InvoiceGenerator: React.FC<InvoiceProps> = ({
-  invoiceNumber = "INV/2023/06/VL001/0001",
+  bookingId,
+  invoiceNumber: propInvoiceNumber,
   businessName,
   businessAddress = "Jl. Pantai Indah No. 123, Bali, Indonesia",
   businessContact = "Tel: +62 123 4567 | Email: info@villaparadise.com",
   businessLogo = "https://api.dicebear.com/7.x/avataaars/svg?seed=villa",
-  customerName = "John Doe",
-  customerEmail = "john.doe@example.com",
-  customerPhone = "+62 987 6543",
-  invoiceDate = "2023-06-15",
-  dueDate = "2023-06-22",
-  items = [
-    {
-      description: "Deluxe Room - 3 nights (Jun 15-18, 2023)",
-      quantity: 3,
-      unitPrice: 1500000,
-      amount: 4500000,
-    },
-    {
-      description: "Airport Transfer",
-      quantity: 1,
-      unitPrice: 350000,
-      amount: 350000,
-    },
-    {
-      description: "Breakfast Package",
-      quantity: 3,
-      unitPrice: 150000,
-      amount: 450000,
-    },
-  ],
-  subtotal = 5300000,
-  taxRate = 11,
-  taxAmount = 583000,
-  discount = 300000,
-  total = 5583000,
-  paymentMethod = "Bank Transfer",
-  paymentStatus = "Pending",
+  customerName: propCustomerName,
+  customerEmail: propCustomerEmail,
+  customerPhone: propCustomerPhone,
+  invoiceDate: propInvoiceDate,
+  dueDate: propDueDate,
+  items: propItems,
+  subtotal: propSubtotal,
+  taxRate: propTaxRate,
+  taxAmount: propTaxAmount,
+  discount: propDiscount,
+  total: propTotal,
+  paymentMethod: propPaymentMethod,
+  paymentStatus: propPaymentStatus,
   bankDetails,
-  notes = "Thank you for your business. Payment is due within 7 days.",
-  onDownload = () => console.log("Download invoice"),
-  onEmail = () => console.log("Email invoice"),
-  onPrint = () => console.log("Print invoice"),
+  notes: propNotes,
+  onDownload,
+  onEmail,
+  onPrint,
 }) => {
+  const { tenantId } = useAuth();
+  const { toast } = useToast();
+  const { toPDF, targetRef } = usePDF({ filename: "invoice.pdf" });
+
   const [previewMode, setPreviewMode] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [savedInvoiceId, setSavedInvoiceId] = useState<string | null>(null);
+
+  // Form state
+  const [invoiceNumber, setInvoiceNumber] = useState(
+    propInvoiceNumber || generateInvoiceNumber(),
+  );
+  const [customerName, setCustomerName] = useState(propCustomerName || "");
+  const [customerEmail, setCustomerEmail] = useState(propCustomerEmail || "");
+  const [customerPhone, setCustomerPhone] = useState(propCustomerPhone || "");
+  const [invoiceDate, setInvoiceDate] = useState(
+    propInvoiceDate || format(new Date(), "yyyy-MM-dd"),
+  );
+  const [dueDate, setDueDate] = useState(
+    propDueDate ||
+      format(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), "yyyy-MM-dd"),
+  );
+  const [items, setItems] = useState<InvoiceItem[]>(
+    propItems || [
+      {
+        description: "Deluxe Room - 3 nights",
+        quantity: 3,
+        unitPrice: 1500000,
+        amount: 4500000,
+      },
+    ],
+  );
+  const [paymentMethod, setPaymentMethod] = useState(
+    propPaymentMethod || "Bank Transfer",
+  );
+  const [paymentStatus, setPaymentStatus] = useState(
+    propPaymentStatus || "Pending",
+  );
+  const [notes, setNotes] = useState(
+    propNotes || "Thank you for your business. Payment is due within 7 days.",
+  );
+  const [discount, setDiscount] = useState(propDiscount || 0);
+  const [taxRate, setTaxRate] = useState(propTaxRate || 11);
+
+  // Calculated values
+  const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+  const taxAmount = (subtotal - discount) * (taxRate / 100);
+  const total = subtotal - discount + taxAmount;
 
   // Load settings from Supabase
   const [settings, setSettings] = useState({
@@ -120,11 +154,84 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
     },
   });
 
+  // Generate a unique invoice number
+  function generateInvoiceNumber() {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const random = Math.floor(Math.random() * 10000)
+      .toString()
+      .padStart(4, "0");
+    return `INV/${year}/${month}/VL001/${random}`;
+  }
+
+  // Load booking data if bookingId is provided
+  useEffect(() => {
+    if (bookingId && tenantId) {
+      const fetchBookingData = async () => {
+        try {
+          setLoading(true);
+
+          // Fetch booking details
+          const { data: bookingData, error: bookingError } = await supabase
+            .from("bookings")
+            .select(
+              `
+              id, check_in, check_out, total_amount, status,
+              customers:customer_id(id, name, email, phone),
+              rooms:room_id(id, number, type, price_per_night)
+            `,
+            )
+            .eq("id", bookingId)
+            .eq("tenant_id", tenantId)
+            .single();
+
+          if (bookingError) {
+            console.error("Error fetching booking:", bookingError);
+            return;
+          }
+
+          if (bookingData) {
+            // Calculate number of nights
+            const checkIn = new Date(bookingData.check_in);
+            const checkOut = new Date(bookingData.check_out);
+            const nights = Math.ceil(
+              (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24),
+            );
+
+            // Set customer information
+            if (bookingData.customers) {
+              setCustomerName(bookingData.customers.name);
+              setCustomerEmail(bookingData.customers.email || "");
+              setCustomerPhone(bookingData.customers.phone || "");
+            }
+
+            // Set invoice items
+            if (bookingData.rooms) {
+              const roomItem = {
+                description: `${bookingData.rooms.type} Room (${bookingData.rooms.number}) - ${nights} nights (${format(checkIn, "dd MMM yyyy")} - ${format(checkOut, "dd MMM yyyy")})`,
+                quantity: nights,
+                unitPrice: bookingData.rooms.price_per_night,
+                amount: nights * bookingData.rooms.price_per_night,
+              };
+
+              setItems([roomItem]);
+            }
+          }
+        } catch (error) {
+          console.error("Error loading booking data:", error);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchBookingData();
+    }
+  }, [bookingId, tenantId]);
+
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        // Get tenant ID from AuthProvider
-        const tenantId = "1"; // Using default tenant ID
         if (!tenantId) return;
 
         const { data, error } = await supabase
@@ -157,13 +264,159 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
     };
 
     fetchSettings();
-  }, []);
+  }, [tenantId]);
 
   // Use settings for business name and bank details if not provided as props
   const displayBusinessName = businessName || settings.businessInfo.name;
   const displayBankDetails =
     bankDetails ||
     `${settings.paymentInfo.bankName}\nAcc No: ${settings.paymentInfo.accountNumber}\nAcc Name: ${settings.paymentInfo.accountHolder}`;
+
+  // Handle item changes
+  const updateItem = (
+    index: number,
+    field: keyof InvoiceItem,
+    value: string | number,
+  ) => {
+    const newItems = [...items];
+
+    if (field === "quantity" || field === "unitPrice") {
+      const numValue = typeof value === "string" ? parseFloat(value) : value;
+      newItems[index][field] = numValue;
+
+      // Recalculate amount
+      newItems[index].amount =
+        newItems[index].quantity * newItems[index].unitPrice;
+    } else {
+      // @ts-ignore - TypeScript doesn't know we're setting a string field
+      newItems[index][field] = value;
+    }
+
+    setItems(newItems);
+  };
+
+  const addItem = () => {
+    setItems([
+      ...items,
+      {
+        description: "",
+        quantity: 1,
+        unitPrice: 0,
+        amount: 0,
+      },
+    ]);
+  };
+
+  const removeItem = (index: number) => {
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  // Save invoice to Supabase
+  const saveInvoice = async () => {
+    if (!tenantId) {
+      toast({
+        title: "Error",
+        description: "Tenant ID is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // 1. Insert invoice record
+      const { data: invoiceData, error: invoiceError } = await supabase
+        .from("invoices")
+        .insert({
+          tenant_id: tenantId,
+          booking_id: bookingId || null,
+          invoice_number: invoiceNumber,
+          invoice_date: invoiceDate,
+          due_date: dueDate,
+          subtotal,
+          tax_rate: taxRate,
+          tax_amount: taxAmount,
+          discount,
+          total,
+          payment_method: paymentMethod,
+          payment_status: paymentStatus,
+          notes,
+        })
+        .select("id")
+        .single();
+
+      if (invoiceError) {
+        throw invoiceError;
+      }
+
+      // 2. Insert invoice items
+      const invoiceItems = items.map((item) => ({
+        invoice_id: invoiceData.id,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        amount: item.amount,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from("invoice_items")
+        .insert(invoiceItems);
+
+      if (itemsError) {
+        throw itemsError;
+      }
+
+      setSavedInvoiceId(invoiceData.id);
+
+      toast({
+        title: "Success",
+        description: "Invoice saved successfully",
+      });
+
+      // Switch to preview mode
+      setPreviewMode(true);
+    } catch (error: any) {
+      console.error("Error saving invoice:", error);
+      toast({
+        title: "Error saving invoice",
+        description: error.message || "An unknown error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle download
+  const handleDownload = useCallback(() => {
+    if (onDownload) {
+      onDownload();
+    } else {
+      toPDF();
+    }
+  }, [onDownload, toPDF]);
+
+  // Handle email
+  const handleEmail = useCallback(() => {
+    if (onEmail) {
+      onEmail();
+    } else {
+      toast({
+        title: "Email feature",
+        description: "Email functionality will be implemented soon",
+      });
+    }
+  }, [onEmail, toast]);
+
+  // Handle print
+  const handlePrint = useCallback(() => {
+    if (onPrint) {
+      onPrint();
+    } else {
+      window.print();
+    }
+  }, [onPrint]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -184,7 +437,7 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
   return (
     <div className="bg-background p-2 sm:p-4 md:p-6 w-full max-w-4xl mx-auto">
       {previewMode ? (
-        <div className="bg-white p-8 rounded-lg shadow-lg">
+        <div ref={targetRef} className="bg-white p-8 rounded-lg shadow-lg">
           {/* Invoice Preview */}
           <div className="flex flex-col sm:flex-row justify-between items-start mb-4 sm:mb-8 gap-4">
             <div>
@@ -293,7 +546,12 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
 
           <div className="mt-6">
             <h3 className="text-lg font-semibold mb-2">Notes</h3>
-            <p className="text-sm text-gray-600">{notes}</p>
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+            />
           </div>
 
           <div className="mt-8 text-center text-sm text-gray-500">
@@ -311,15 +569,15 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
             >
               Edit
             </Button>
-            <Button variant="outline" size="sm" onClick={onPrint}>
+            <Button variant="outline" size="sm" onClick={handlePrint}>
               <Printer className="h-4 w-4 mr-2" />
               Print
             </Button>
-            <Button variant="outline" size="sm" onClick={onDownload}>
+            <Button variant="outline" size="sm" onClick={handleDownload}>
               <Download className="h-4 w-4 mr-2" />
               Download PDF
             </Button>
-            <Button variant="default" size="sm" onClick={onEmail}>
+            <Button variant="default" size="sm" onClick={handleEmail}>
               <Mail className="h-4 w-4 mr-2" />
               Email Invoice
             </Button>
@@ -376,7 +634,11 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="invoiceNumber">Invoice Number</Label>
-                    <Input id="invoiceNumber" defaultValue={invoiceNumber} />
+                    <Input
+                      id="invoiceNumber"
+                      value={invoiceNumber}
+                      onChange={(e) => setInvoiceNumber(e.target.value)}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -384,17 +646,26 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
                       <Input
                         id="invoiceDate"
                         type="date"
-                        defaultValue={invoiceDate}
+                        value={invoiceDate}
+                        onChange={(e) => setInvoiceDate(e.target.value)}
                       />
                     </div>
                     <div>
                       <Label htmlFor="dueDate">Due Date</Label>
-                      <Input id="dueDate" type="date" defaultValue={dueDate} />
+                      <Input
+                        id="dueDate"
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                      />
                     </div>
                   </div>
                   <div>
                     <Label htmlFor="paymentStatus">Payment Status</Label>
-                    <Select defaultValue={paymentStatus}>
+                    <Select
+                      value={paymentStatus}
+                      onValueChange={(value) => setPaymentStatus(value)}
+                    >
                       <SelectTrigger id="paymentStatus">
                         <SelectValue placeholder="Select status" />
                       </SelectTrigger>
@@ -419,19 +690,28 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="customerName">Customer Name</Label>
-                  <Input id="customerName" defaultValue={customerName} />
+                  <Input
+                    id="customerName"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="customerEmail">Customer Email</Label>
                   <Input
                     id="customerEmail"
                     type="email"
-                    defaultValue={customerEmail}
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
                   />
                 </div>
                 <div>
                   <Label htmlFor="customerPhone">Customer Phone</Label>
-                  <Input id="customerPhone" defaultValue={customerPhone} />
+                  <Input
+                    id="customerPhone"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                  />
                 </div>
               </div>
             </div>
@@ -454,51 +734,57 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
                   {items.map((item, index) => (
                     <TableRow key={index}>
                       <TableCell>
-                        <Input defaultValue={item.description} />
+                        <Input
+                          value={item.description}
+                          onChange={(e) =>
+                            updateItem(index, "description", e.target.value)
+                          }
+                        />
                       </TableCell>
                       <TableCell>
                         <Input
                           type="number"
-                          defaultValue={item.quantity}
+                          value={item.quantity}
+                          onChange={(e) =>
+                            updateItem(index, "quantity", e.target.value)
+                          }
                           className="w-20"
                         />
                       </TableCell>
                       <TableCell>
-                        <Input type="number" defaultValue={item.unitPrice} />
-                      </TableCell>
-                      <TableCell>
                         <Input
                           type="number"
-                          defaultValue={item.amount}
-                          readOnly
+                          value={item.unitPrice}
+                          onChange={(e) =>
+                            updateItem(index, "unitPrice", e.target.value)
+                          }
                         />
+                      </TableCell>
+                      <TableCell>
+                        <Input type="number" value={item.amount} readOnly />
                       </TableCell>
                       <TableCell>
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0"
+                          onClick={() => removeItem(index)}
                         >
                           <span className="sr-only">Delete item</span>
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="h-4 w-4"
-                          >
-                            <path d="M18 6L6 18M6 6l12 12" />
-                          </svg>
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-              <Button variant="outline" size="sm" className="mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={addItem}
+              >
+                <Plus className="h-4 w-4 mr-2" />
                 Add Item
               </Button>
             </div>
@@ -513,7 +799,10 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="paymentMethod">Payment Method</Label>
-                    <Select defaultValue={paymentMethod}>
+                    <Select
+                      value={paymentMethod}
+                      onValueChange={(value) => setPaymentMethod(value)}
+                    >
                       <SelectTrigger id="paymentMethod">
                         <SelectValue placeholder="Select method" />
                       </SelectTrigger>
@@ -538,7 +827,12 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
                   )}
                   <div>
                     <Label htmlFor="notes">Notes</Label>
-                    <Textarea id="notes" defaultValue={notes} rows={3} />
+                    <Textarea
+                      id="notes"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={3}
+                    />
                   </div>
                 </div>
               </div>
@@ -560,7 +854,8 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
                     <Input
                       id="discount"
                       type="number"
-                      defaultValue={discount}
+                      value={discount}
+                      onChange={(e) => setDiscount(Number(e.target.value))}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -569,7 +864,8 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
                       <Input
                         id="taxRate"
                         type="number"
-                        defaultValue={taxRate}
+                        value={taxRate}
+                        onChange={(e) => setTaxRate(Number(e.target.value))}
                       />
                     </div>
                     <div>
@@ -597,13 +893,41 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
             </div>
           </CardContent>
           <CardFooter className="flex justify-between">
-            <Button variant="outline">Reset</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                // Reset form to initial values or reload from props
+                setInvoiceNumber(generateInvoiceNumber());
+                setItems([
+                  {
+                    description: "Deluxe Room - 3 nights",
+                    quantity: 3,
+                    unitPrice: 1500000,
+                    amount: 4500000,
+                  },
+                ]);
+                setDiscount(0);
+                setPaymentStatus("Pending");
+              }}
+            >
+              Reset
+            </Button>
             <div className="space-x-2">
               <Button variant="outline" onClick={() => setPreviewMode(true)}>
                 <Eye className="h-4 w-4 mr-2" />
                 Preview
               </Button>
-              <Button variant="default">Generate Invoice</Button>
+              <Button
+                variant="default"
+                onClick={saveInvoice}
+                disabled={loading}
+              >
+                {loading
+                  ? "Saving..."
+                  : savedInvoiceId
+                    ? "Update Invoice"
+                    : "Generate Invoice"}
+              </Button>
             </div>
           </CardFooter>
         </Card>
