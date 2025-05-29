@@ -12,30 +12,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff } from "lucide-react";
+import { useAuth } from "./AuthProvider";
 
-interface LoginProps {
-  onLogin?: (username: string, password: string) => void;
-}
-
-const Login: React.FC<LoginProps> = ({
-  onLogin = (username, password) => {
-    // Default implementation for demo purposes
-    console.log(`Login attempt with ${username}`);
-    // In a real app, this would call an API
-    if (username === "admin" && password === "password") {
-      localStorage.setItem("isLoggedIn", "true");
-      localStorage.setItem("user", username);
-      return true;
-    }
-    return false;
-  },
-}) => {
+const Login: React.FC = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +32,7 @@ const Login: React.FC<LoginProps> = ({
       // Simulate API call delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      const success = onLogin(username, password);
+      const success = await login(username, password);
 
       if (success) {
         navigate("/");
