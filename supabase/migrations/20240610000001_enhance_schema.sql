@@ -239,7 +239,7 @@ BEGIN
 END $$;
 
 -- Enable realtime for all tables
-DO $
+DO $$
 BEGIN
   -- Check if tables are already in the publication before adding them
   IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'tenants') THEN
@@ -285,4 +285,4 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'maintenance_tasks') THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE maintenance_tasks;
   END IF;
-END $;
+END $$;
