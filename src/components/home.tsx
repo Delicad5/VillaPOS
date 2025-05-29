@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,7 +16,10 @@ import RoomGrid from "./RoomGrid";
 import BookingForm from "./BookingForm";
 import CustomerDatabase from "./CustomerDatabase";
 import RoomManagement from "./RoomManagement";
+import SettingsPanel from "./SettingsPanel";
 import { useAuth } from "./AuthProvider";
+import LanguageSwitcher from "./LanguageSwitcher";
+import { useLanguage } from "../contexts/LanguageContext";
 
 const Home = () => {
   const [activeTab, setActiveTab] = useState("rooms");
@@ -24,14 +27,38 @@ const Home = () => {
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [filterType, setFilterType] = useState("all");
   const { user, logout } = useAuth();
+  const { t } = useLanguage();
 
-  // Mock business info - in a real app this would come from the backend
-  const businessInfo = {
+  // Business info from settings
+  const [businessInfo, setBusinessInfo] = useState({
     name: "Villa Paradise Resort",
     address: "Jl. Pantai Indah No. 123, Bali",
     phone: "+62 812 3456 7890",
     email: "info@villaparadise.com",
-  };
+  });
+
+  // Load business name from settings
+  useEffect(() => {
+    const savedSettings = localStorage.getItem("villaSettings");
+    if (savedSettings) {
+      try {
+        const parsedSettings = JSON.parse(savedSettings);
+        if (parsedSettings.businessInfo?.name) {
+          setBusinessInfo((prev) => ({
+            ...prev,
+            name: parsedSettings.businessInfo.name,
+          }));
+        }
+
+        // Apply theme if available
+        if (parsedSettings.theme) {
+          document.body.className = parsedSettings.theme;
+        }
+      } catch (error) {
+        console.error("Error parsing settings from localStorage", error);
+      }
+    }
+  }, []);
 
   const handleRoomSelect = (room) => {
     setSelectedRoom(room);
@@ -51,15 +78,16 @@ const Home = () => {
           <h1 className="text-xl sm:text-2xl font-bold">{businessInfo.name}</h1>
           <div className="flex items-center space-x-2 sm:space-x-4">
             <span className="text-sm hidden sm:inline-block">
-              Welcome, {user}
+              {t("general.welcome")}, {user}
             </span>
+            <LanguageSwitcher />
             <Button
               variant="secondary"
               size="sm"
               className="text-xs sm:text-sm"
             >
               <Settings className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Settings</span>
+              <span className="hidden sm:inline">{t("general.settings")}</span>
             </Button>
             <Button
               variant="outline"
@@ -68,7 +96,7 @@ const Home = () => {
               className="text-xs sm:text-sm bg-white/10"
             >
               <LogOut className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Logout</span>
+              <span className="hidden sm:inline">{t("general.logout")}</span>
             </Button>
           </div>
         </div>
@@ -83,26 +111,28 @@ const Home = () => {
               onClick={() => setShowBookingForm(false)}
               className="mb-4"
             >
-              Back to Rooms
+              {t("general.back")} {t("rooms.title")}
             </Button>
             <BookingForm
-              room={selectedRoom}
-              onComplete={handleBookingComplete}
-              businessInfo={businessInfo}
+              roomId={selectedRoom?.id}
+              roomName={selectedRoom?.name}
+              roomType={selectedRoom?.type}
+              pricePerNight={selectedRoom?.price}
+              onBookingComplete={handleBookingComplete}
             />
           </div>
         ) : (
           <>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
               <h2 className="text-2xl sm:text-3xl font-bold">
-                Villa Management Dashboard
+                {t("dashboard.title")}
               </h2>
               <Button
                 onClick={() => setShowBookingForm(true)}
                 className="w-full sm:w-auto"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                New Booking
+                {t("dashboard.newBooking")}
               </Button>
             </div>
 
@@ -112,13 +142,22 @@ const Home = () => {
               className="w-full"
             >
               <TabsList className="mb-4 w-full">
-                <TabsTrigger value="rooms">Rooms</TabsTrigger>
+                <TabsTrigger value="rooms">{t("rooms.title")}</TabsTrigger>
                 <TabsTrigger value="roomManagement">
-                  Room Management
+                  {t("rooms.management")}
                 </TabsTrigger>
-                <TabsTrigger value="bookings">Bookings</TabsTrigger>
-                <TabsTrigger value="invoices">Invoices</TabsTrigger>
-                <TabsTrigger value="customers">Customers</TabsTrigger>
+                <TabsTrigger value="bookings">
+                  {t("bookings.title")}
+                </TabsTrigger>
+                <TabsTrigger value="invoices">
+                  {t("invoices.title")}
+                </TabsTrigger>
+                <TabsTrigger value="customers">
+                  {t("customers.title")}
+                </TabsTrigger>
+                <TabsTrigger value="settings">
+                  {t("general.settings")}
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="rooms" className="space-y-4">
@@ -129,7 +168,7 @@ const Home = () => {
                         <div className="relative w-full">
                           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                           <Input
-                            placeholder="Search rooms..."
+                            placeholder={t("rooms.searchRooms")}
                             className="pl-8"
                           />
                         </div>
@@ -141,13 +180,23 @@ const Home = () => {
                           onValueChange={setFilterType}
                         >
                           <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Filter by type" />
+                            <SelectValue
+                              placeholder={t("rooms.filterByType")}
+                            />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Types</SelectItem>
-                            <SelectItem value="standard">Standard</SelectItem>
-                            <SelectItem value="deluxe">Deluxe</SelectItem>
-                            <SelectItem value="suite">Suite</SelectItem>
+                            <SelectItem value="all">
+                              {t("rooms.allTypes")}
+                            </SelectItem>
+                            <SelectItem value="standard">
+                              {t("rooms.standard")}
+                            </SelectItem>
+                            <SelectItem value="deluxe">
+                              {t("rooms.deluxe")}
+                            </SelectItem>
+                            <SelectItem value="suite">
+                              {t("rooms.suite")}
+                            </SelectItem>
                           </SelectContent>
                         </Select>
 
@@ -156,19 +205,19 @@ const Home = () => {
                             variant="outline"
                             className="bg-green-100 text-green-800 hover:bg-green-100"
                           >
-                            Available
+                            {t("rooms.available")}
                           </Badge>
                           <Badge
                             variant="outline"
                             className="bg-red-100 text-red-800 hover:bg-red-100"
                           >
-                            Booked
+                            {t("rooms.booked")}
                           </Badge>
                           <Badge
                             variant="outline"
                             className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
                           >
-                            Cleaning
+                            {t("rooms.cleaning")}
                           </Badge>
                         </div>
                       </div>
@@ -195,16 +244,16 @@ const Home = () => {
                   <CardContent className="pt-6">
                     <div className="flex justify-between items-center mb-6">
                       <h3 className="text-xl font-semibold">
-                        Current Bookings
+                        {t("bookings.current")}
                       </h3>
                       <div className="flex gap-2">
                         <Input
-                          placeholder="Search bookings..."
+                          placeholder={t("bookings.searchBookings")}
                           className="w-64"
                         />
                         <Button variant="outline">
                           <FileText className="h-4 w-4 mr-2" />
-                          Export
+                          {t("general.export")}
                         </Button>
                       </div>
                     </div>
@@ -221,15 +270,17 @@ const Home = () => {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-xl font-semibold">Invoice History</h3>
+                      <h3 className="text-xl font-semibold">
+                        {t("invoices.history")}
+                      </h3>
                       <div className="flex gap-2">
                         <Input
-                          placeholder="Search invoices..."
+                          placeholder={t("invoices.searchInvoices")}
                           className="w-64"
                         />
                         <Button variant="outline">
                           <FileText className="h-4 w-4 mr-2" />
-                          Export
+                          {t("general.export")}
                         </Button>
                       </div>
                     </div>
@@ -247,6 +298,14 @@ const Home = () => {
                 <Card>
                   <CardContent className="pt-6">
                     <CustomerDatabase />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="settings">
+                <Card>
+                  <CardContent className="pt-6">
+                    <SettingsPanel />
                   </CardContent>
                 </Card>
               </TabsContent>

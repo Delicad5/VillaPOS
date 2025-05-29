@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -63,7 +63,7 @@ interface InvoiceProps {
 
 const InvoiceGenerator: React.FC<InvoiceProps> = ({
   invoiceNumber = "INV/2023/06/VL001/0001",
-  businessName = "Villa Paradise",
+  businessName,
   businessAddress = "Jl. Pantai Indah No. 123, Bali, Indonesia",
   businessContact = "Tel: +62 123 4567 | Email: info@villaparadise.com",
   businessLogo = "https://api.dicebear.com/7.x/avataaars/svg?seed=villa",
@@ -99,13 +99,43 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
   total = 5583000,
   paymentMethod = "Bank Transfer",
   paymentStatus = "Pending",
-  bankDetails = "Bank Central Asia (BCA)\nAcc No: 1234567890\nAcc Name: PT Villa Paradise Indonesia",
+  bankDetails,
   notes = "Thank you for your business. Payment is due within 7 days.",
   onDownload = () => console.log("Download invoice"),
   onEmail = () => console.log("Email invoice"),
   onPrint = () => console.log("Print invoice"),
 }) => {
   const [previewMode, setPreviewMode] = useState(false);
+
+  // Load settings from localStorage
+  const [settings, setSettings] = useState({
+    businessInfo: {
+      name: "Villa Paradise",
+    },
+    paymentInfo: {
+      bankName: "Bank Central Asia (BCA)",
+      accountNumber: "1234567890",
+      accountHolder: "PT Villa Paradise Indonesia",
+    },
+  });
+
+  useEffect(() => {
+    const savedSettings = localStorage.getItem("villaSettings");
+    if (savedSettings) {
+      try {
+        const parsedSettings = JSON.parse(savedSettings);
+        setSettings(parsedSettings);
+      } catch (error) {
+        console.error("Error parsing settings from localStorage", error);
+      }
+    }
+  }, []);
+
+  // Use settings for business name and bank details if not provided as props
+  const displayBusinessName = businessName || settings.businessInfo.name;
+  const displayBankDetails =
+    bankDetails ||
+    `${settings.paymentInfo.bankName}\nAcc No: ${settings.paymentInfo.accountNumber}\nAcc Name: ${settings.paymentInfo.accountHolder}`;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -135,7 +165,7 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
                 alt="Business Logo"
                 className="h-16 w-16 mb-2"
               />
-              <h1 className="text-2xl font-bold">{businessName}</h1>
+              <h1 className="text-2xl font-bold">{displayBusinessName}</h1>
               <p className="text-sm text-gray-600">{businessAddress}</p>
               <p className="text-sm text-gray-600">{businessContact}</p>
             </div>
@@ -226,7 +256,9 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
             </h3>
             {paymentMethod === "Bank Transfer" && (
               <div className="bg-gray-50 p-4 rounded-md">
-                <pre className="whitespace-pre-wrap text-sm">{bankDetails}</pre>
+                <pre className="whitespace-pre-wrap text-sm">
+                  {displayBankDetails}
+                </pre>
               </div>
             )}
           </div>
@@ -289,7 +321,10 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="businessName">Business Name</Label>
-                    <Input id="businessName" defaultValue={businessName} />
+                    <Input
+                      id="businessName"
+                      defaultValue={displayBusinessName}
+                    />
                   </div>
                   <div>
                     <Label htmlFor="businessAddress">Business Address</Label>
@@ -468,7 +503,7 @@ const InvoiceGenerator: React.FC<InvoiceProps> = ({
                       <Label htmlFor="bankDetails">Bank Details</Label>
                       <Textarea
                         id="bankDetails"
-                        defaultValue={bankDetails}
+                        defaultValue={displayBankDetails}
                         rows={4}
                       />
                     </div>

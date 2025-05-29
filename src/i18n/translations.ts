@@ -18,6 +18,25 @@ type TranslationKeys =
   | "general.confirm"
   | "general.active"
   | "general.inactive"
+  | "settings.title"
+  | "settings.appearance"
+  | "settings.theme"
+  | "settings.lightMode"
+  | "settings.darkMode"
+  | "settings.corporateBlue"
+  | "settings.natureGreen"
+  | "settings.businessInfo"
+  | "settings.businessName"
+  | "settings.businessNamePlaceholder"
+  | "settings.paymentInfo"
+  | "settings.bankName"
+  | "settings.bankNamePlaceholder"
+  | "settings.accountNumber"
+  | "settings.accountNumberPlaceholder"
+  | "settings.accountHolder"
+  | "settings.accountHolderPlaceholder"
+  | "settings.saveSuccess"
+  | "settings.saveSuccessDescription"
   | "dashboard.title"
   | "dashboard.newBooking"
   | "rooms.title"
@@ -98,6 +117,29 @@ export const translations: TranslationsType = {
     "general.confirm": "Confirm",
     "general.active": "Active",
     "general.inactive": "Inactive",
+    "settings.title": "Settings",
+    "settings.appearance": "Dashboard Appearance",
+    "settings.theme": "Theme",
+    "settings.lightMode": "Light Mode",
+    "settings.darkMode": "Dark Mode",
+    "settings.corporateBlue": "Corporate Blue",
+    "settings.natureGreen": "Nature Green",
+    "settings.businessInfo": "Business Information",
+    "settings.businessName": "Business Name",
+    "settings.businessNamePlaceholder": "Enter your business name",
+    "settings.paymentInfo": "Payment Information",
+    "settings.bankName": "Bank Name",
+    "settings.bankNamePlaceholder": "Enter bank name",
+    "settings.accountNumber": "Account Number",
+    "settings.accountNumberPlaceholder": "Enter account number",
+    "settings.accountHolder": "Account Holder Name",
+    "settings.accountHolderPlaceholder": "Enter account holder name",
+    "settings.saveSuccess": "Settings saved",
+    "settings.saveSuccessDescription":
+      "Your settings have been saved successfully.",
+    "settings.saveSuccess": "Save Success",
+    "settings.saveSuccessDescription":
+      "Your changes have been saved successfully.",
     "dashboard.title": "Villa Management Dashboard",
     "dashboard.newBooking": "New Booking",
     "rooms.title": "Rooms",
@@ -171,6 +213,29 @@ export const translations: TranslationsType = {
     "general.confirm": "Konfirmasi",
     "general.active": "Aktif",
     "general.inactive": "Tidak Aktif",
+    "settings.title": "Pengaturan",
+    "settings.appearance": "Tampilan Dashboard",
+    "settings.theme": "Tema",
+    "settings.lightMode": "Mode Terang",
+    "settings.darkMode": "Mode Gelap",
+    "settings.corporateBlue": "Biru Korporat",
+    "settings.natureGreen": "Hijau Alam",
+    "settings.businessInfo": "Informasi Bisnis",
+    "settings.businessName": "Nama Bisnis",
+    "settings.businessNamePlaceholder": "Masukkan nama bisnis Anda",
+    "settings.paymentInfo": "Informasi Pembayaran",
+    "settings.bankName": "Nama Bank",
+    "settings.bankNamePlaceholder": "Masukkan nama bank",
+    "settings.accountNumber": "Nomor Rekening",
+    "settings.accountNumberPlaceholder": "Masukkan nomor rekening",
+    "settings.accountHolder": "Nama Pemilik Rekening",
+    "settings.accountHolderPlaceholder": "Masukkan nama pemilik rekening",
+    "settings.saveSuccess": "Pengaturan tersimpan",
+    "settings.saveSuccessDescription":
+      "Pengaturan Anda telah berhasil disimpan.",
+    "settings.saveSuccess": "Simpan Berhasil",
+    "settings.saveSuccessDescription":
+      "Perubahan Anda telah disimpan dengan sukses.",
     "dashboard.title": "Dashboard Manajemen Villa",
     "dashboard.newBooking": "Booking Baru",
     "rooms.title": "Kamar",
